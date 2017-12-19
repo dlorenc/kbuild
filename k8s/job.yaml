@@ -1,0 +1,40 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: kbuild-build
+spec:
+  template:
+    metadata:
+      labels:
+        app: kbuild-build
+    spec:
+      initContainers:
+        - name: init-static
+          image: gcr.io/dlorenc-vmtest2/kbuild-static:latest
+          command:
+          - cp
+          - /bin/main
+          - /work-dir/
+          volumeMounts:
+          - name: workdir
+            mountPath: /work-dir
+        - name: do-build
+          image: gcr.io/google-appengine/debian9:latest
+          command:
+          - /work-dir/main
+          volumeMounts:
+          - name: workdir
+            mountPath: /work-dir
+      containers:
+      - name: append
+        image: gcr.io/dlorenc-vmtest2/appender:latest
+        volumeMounts:
+        - name: workdir
+          mountPath: /work-dir
+        command: ["python", "/app/main.py"]
+      restartPolicy: Never
+      volumes:
+      - name: workdir
+        emptyDir: {}
+
+
