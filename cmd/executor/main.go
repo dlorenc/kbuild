@@ -3,35 +3,32 @@ package main
 import (
 	"crypto/md5"
 	"encoding/hex"
+	"flag"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"os"
 	"os/exec"
 	"strings"
 
+	"github.com/dlorenc/kbuild/pkg/dockerfile"
 	"github.com/dlorenc/kbuild/pkg/snapshot"
 	"github.com/docker/docker/builder/dockerfile/instructions"
-	"github.com/docker/docker/builder/dockerfile/parser"
 )
 
-func exit(err error) {
-	fmt.Println(err)
-	os.Exit(1)
-}
-
-const Dockerfile = `FROM gcr.io/google-appengine/debian9
-RUN apt-get update && apt-get install -y curl
-RUN echo "hey" > /etc/foo
-RUN echo "baz" > /etc/foo
-RUN echo "baz" > /etc/foo2
-
-COPY . foo
-`
+var dockerfilePath = flag.String("dockerfile", "/dockerfile/Dockerfile", "Path to Dockerfile.")
 
 func main() {
-	stages, err := ParseDockerfile()
+	flag.Parse()
+
+	b, err := ioutil.ReadFile(*dockerfilePath)
 	if err != nil {
-		exit(err)
+		panic(err)
+	}
+
+	stages, err := dockerfile.Parse(b)
+	if err != nil {
+		panic(err)
 	}
 
 	commandsToRun := [][]string{}
@@ -53,9 +50,9 @@ func main() {
 
 	hasher := func(p string) string {
 		h := md5.New()
-		fi, err := os.Stat(p)
+		fi, err := os.Lstat(p)
 		if err != nil {
-			exit(err)
+			panic(err)
 		}
 		h.Write([]byte(fi.Mode().String()))
 		h.Write([]byte(fi.ModTime().String()))
@@ -63,11 +60,11 @@ func main() {
 		if fi.Mode().IsRegular() {
 			f, err := os.Open(p)
 			if err != nil {
-				exit(err)
+				panic(err)
 			}
 			defer f.Close()
 			if _, err := io.Copy(h, f); err != nil {
-				exit(err)
+				panic(err)
 			}
 		}
 
@@ -79,36 +76,25 @@ func main() {
 
 	// Take initial snapshot
 	if err := snapshotter.Init(); err != nil {
-		exit(err)
+		panic(err)
 	}
 
 	for _, c := range commandsToRun {
 		fmt.Println("cmd: ", c[0])
 		fmt.Println("args: ", c[1:])
 		if err != nil {
-			exit(err)
+			panic(err)
 		}
 		cmd := exec.Command(c[0], c[1:]...)
 		combout, err := cmd.CombinedOutput()
 		if err != nil {
-			exit(err)
+			panic(err)
 		}
 		fmt.Printf("Output from %s %s\n", cmd.Path, cmd.Args)
 		fmt.Print(string(combout))
 
 		if err := snapshotter.TakeSnapshot(); err != nil {
-			exit(err)
+			panic(err)
 		}
 	}
-}
-
-func ParseDockerfile() ([]instructions.Stage, error) {
-	d := strings.NewReader(Dockerfile)
-	r, err := parser.Parse(d)
-	stages, _, err := instructions.Parse(r.AST)
-	if err != nil {
-		exit(err)
-	}
-
-	return stages, err
 }

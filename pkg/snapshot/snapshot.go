@@ -67,7 +67,7 @@ func (s *Snapshotter) snapShotFS(f io.Writer) error {
 }
 
 func ignorePath(p string) bool {
-	for _, d := range []string{"/dev", "/sys", "/proc", "/work-dir"} {
+	for _, d := range []string{"/dev", "/sys", "/proc", "/work-dir", "/dockerfile"} {
 		if strings.HasPrefix(p, d) {
 			return true
 		}
@@ -79,7 +79,7 @@ func addToTar(p string, i os.FileInfo, w *tar.Writer) error {
 	linkDst := ""
 	if i.Mode()&os.ModeSymlink != 0 {
 		var err error
-		linkDst, err = filepath.EvalSymlinks(p)
+		linkDst, err = os.Readlink(p)
 		if err != nil {
 			return err
 		}
